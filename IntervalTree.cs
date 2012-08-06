@@ -175,7 +175,7 @@ namespace IntervalTree
 
                 this.Root = IntervalNode.Delete(this.Root, arg, ref wasDeleted, ref wasSuccessful);
                 if (this.Root != null)
-                {
+                {                    
                     IntervalNode.ComputeMax(this.Root);
                 }
 
@@ -743,12 +743,6 @@ namespace IntervalTree
                         if (node.Left != newChild)
                         {
                             node.Left = newChild;
-#if TREE_WITH_PARENT_POINTERS
-                            if (newChild != null)
-                            {
-                                newChild.Parent = node;
-                            }
-#endif
                         }
 
                         if (wasDeleted)
@@ -774,12 +768,6 @@ namespace IntervalTree
                             if (node.Right != newChild)
                             {
                                 node.Right = newChild;
-#if TREE_WITH_PARENT_POINTERS
-                                if (newChild != null)
-                                {
-                                    newChild.Parent = node;
-                                }
-#endif
                             }
 
                             if (wasDeleted)
@@ -791,12 +779,25 @@ namespace IntervalTree
                         {
                             wasDeleted = true;
                             wasSuccessful = true;
+
+#if TREE_WITH_PARENT_POINTERS
+                            if (node.Right != null)
+                            {
+                                node.Right.Parent = node.Parent;
+                            }
+#endif
                             return node.Right;
                         }
                         else
                         {
                             wasDeleted = true;
                             wasSuccessful = true;
+#if TREE_WITH_PARENT_POINTERS
+                            if (node.Left != null)
+                            {
+                                node.Left.Parent = node.Parent;
+                            }
+#endif
                             return node.Left;
                         }
                     }
@@ -813,12 +814,6 @@ namespace IntervalTree
                         if (node.Right != newChild)
                         {
                             node.Right = newChild;
-#if TREE_WITH_PARENT_POINTERS
-                            if (newChild != null)
-                            {
-                                newChild.Parent = node;
-                            }
-#endif
                         }
 
                         if (wasDeleted)
