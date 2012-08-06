@@ -1,6 +1,6 @@
 ﻿/////////////////////////////////////////////////////////////////////
 // File Name               : IntervalTree.cs
-//      Created            : 24 7 2012   23:20
+//      Created            : 06 8 2012   22:38
 //      Author             : Costin S
 //
 /////////////////////////////////////////////////////////////////////
@@ -13,15 +13,22 @@ namespace IntervalTree
     using System.Diagnostics;
 
     /// <summary>
-    /// Interval
+    /// Interval structure
     /// </summary>
     /// <typeparam name="T"></typeparam>
     public struct Interval<T> where T : IComparable<T>
     {
+        #region Properties
+
+        public T Start;
+        public T End;
+
+        #endregion
+
         #region C'tor
-        
+
         public Interval(T start, T end)
-            :this()
+            : this()
         {
             if (start.CompareTo(end) >= 0)
             {
@@ -36,9 +43,6 @@ namespace IntervalTree
 
         #region Public Methods
 
-        public T Start;
-        public T End;
-
         /// <summary>
         /// Determines if two intervals overlap (i.e. if this interval starts before the other ends and it finishes after the other starts)
         /// </summary>
@@ -47,28 +51,30 @@ namespace IntervalTree
         ///   <c>true</c> if the specified other is overlapping; otherwise, <c>false</c>.
         /// </returns>
         public bool OverlapsWith(Interval<T> other)
-        {            
-            return (this.Start.CompareTo(other.End) < 0 && this.End.CompareTo(other.Start) > 0);
-        }        
+        {
+            return this.Start.CompareTo(other.End) < 0 && this.End.CompareTo(other.Start) > 0;
+        }
 
         public override string ToString()
         {
-            return "[" + Start.ToString() + "," + End.ToString() + "]";
+            return string.Format("[{0}, {1}]", this.Start.ToString(), this.End.ToString());
         }
-        
+
         #endregion
     }
 
     /// <summary>
-    /// Interval Tree
+    /// Interval Tree class
     /// </summary>
     /// <typeparam name="T"></typeparam>
     public class IntervalTree<T, TypeValue> where T : IComparable<T>
     {        
-        #region Properties
+        #region Fields
 
+        private int Count;
         private IntervalNode Root;
-        internal int Count;
+        private IComparer<T> comparer;
+        private KeyValueComparer<T, TypeValue> keyvalueComparer;
 
         #endregion
 
@@ -78,6 +84,7 @@ namespace IntervalTree
         /// Initializes a new instance of the <see cref="IntervalTree&lt;T, TypeValue&gt;"/> class.
         /// </summary>
         public IntervalTree()
+            : this(null)
         {
         }
 
@@ -94,6 +101,8 @@ namespace IntervalTree
                     Add(elem.Key, elem.Value);
                 }
             }
+            this.comparer = ComparerUtil.GetComparer();
+            this.keyvalueComparer = new KeyValueComparer<T, TypeValue>(this.comparer);
         }
 
         #endregion
@@ -114,6 +123,9 @@ namespace IntervalTree
 
         /// <summary>
         /// Adds the specified interval.
+        /// If there is more than one interval starting at the same time/value, the intervalnode.Interval stores the start time and the maximum end time of all intervals starting at the same value.
+        /// All end values (except the maximum end time/value which is stored in the interval node itself) are stored in the Range list in decreasing order.
+        /// Note: this is okay for problems where intervals starting at the same time /value is not a frequent occurrence, however you can use other data structure for better performance depending on your problem needs
         /// </summary>
         /// <param name="arg">The arg.</param>
         public void Add(T x, T y, TypeValue value)
@@ -122,10 +134,13 @@ namespace IntervalTree
         }
 
         /// <summary>
-        /// Adds the specified arg.
+        /// Adds the specified interval.
+        /// If there is more than one interval starting at the same time/value, the intervalnode.Interval stores the start time and the maximum end time of all intervals starting at the same value.
+        /// All end values (except the maximum end time/value which is stored in the interval node itself) are stored in the Range list in decreasing order.
+        /// Note: this is okay for problems where intervals starting at the same time /value is not a frequent occurrence, however you can use other data structure for better performance depending on your problem needs
         /// </summary>
         /// <param name="arg">The arg.</param>
-        public void Add(Interval<T> interval, TypeValue value)
+        public bool Add(Interval<T> interval, TypeValue value)
         {
             bool wasAdded = false;
             bool wasSuccessful = false;
@@ -140,20 +155,25 @@ namespace IntervalTree
             {
                 this.Count++;
             }
+
+            return wasSuccessful;
         }
 
         /// <summary>
-        /// Deletes the interval starting at x.
+        /// Deletes the specified interval.
+        /// If the interval tree is used with unique intervals, this method removes the interval specified as an argument.
+        /// If multiple identical intervals (starting at the same time and also ending at the same time) are allowed, this function will delete one of them( see procedure DeleteIntervalFromNodeWithRange for details)
+        /// In this case, it is easy enough to either specify the (interval, value) pair to be deleted or enforce uniqueness by changing the Add procedure.
         /// </summary>
         /// <param name="arg">The arg.</param>
-        public void Delete(Interval<T> arg)
+        public bool Delete(Interval<T> arg)
         {
-            if (Root != null)
+            if (this.Root != null)
             {
                 bool wasDeleted = false;
                 bool wasSuccessful = false;
 
-                Root = IntervalNode.Delete(Root, arg, ref wasDeleted, ref wasSuccessful);
+                this.Root = IntervalNode.Delete(this.Root, arg, ref wasDeleted, ref wasSuccessful);
                 if (this.Root != null)
                 {
                     IntervalNode.ComputeMax(this.Root);
@@ -163,11 +183,17 @@ namespace IntervalTree
                 {
                     this.Count--;
                 }
+                return wasSuccessful;
             }
-        }        
+            else
+            {
+                return false;
+            }
+        }
 
         /// <summary>
-        /// Searches for all intervals overlapping the one specified as an argument.
+        /// Searches for all intervals overlapping the one specified.
+        /// If multiple intervals starting at the same time/value are found to overlap the specified interval, they are returned in decreasing order of their End values.
         /// </summary>
         /// <param name="toFind">To find.</param>
         /// <param name="list">The list.</param>
@@ -180,46 +206,51 @@ namespace IntervalTree
         }
 
         /// <summary>
-        /// Searches for all intervals overlapping the one specified as an argument.
+        /// Searches for all intervals overlapping the one specified.
+        /// If multiple intervals starting at the same time/value are found to overlap the specified interval, they are returned in decreasing order of their End values.
         /// </summary>
         /// <param name="toFind">To find.</param>
         /// <returns></returns>
         public IEnumerable<KeyValuePair<Interval<T>, TypeValue>> GetIntervalsOverlappingWith(Interval<T> toFind)
         {
-            return (Root != null) ? Root.GetIntervalsOverlappingWith(toFind) : null;
+            return (this.Root != null) ? this.Root.GetIntervalsOverlappingWith(toFind) : null;
         }
 
         /// <summary>
-        /// Searches the specified arg.
+        /// Returns all intervals beginning at the specified start value. 
+        /// The multiple intervals start at the specified value, they are sorted based on their End value (i.e. returned in ascending order of their End values)
         /// </summary>
         /// <param name="arg">The arg.</param>
         /// <returns></returns>
         public List<KeyValuePair<Interval<T>, TypeValue>> GetIntervalsStartingAt(T arg)
         {
-            return IntervalNode.GetIntervalsStartingAt(Root, arg);
+            return IntervalNode.GetIntervalsStartingAt(this.Root, arg);
         }
 
 #if TREE_WITH_PARENT_POINTERS
+
         /// <summary>
-        /// Gets the collection of keys (ascending order)
+        /// Gets the collection of intervals (in ascending order of their Start values).
+        /// Those intervals starting at the same time/value are sorted further based on their End value (i.e. returned in ascending order of their End values)
         /// </summary>
-        public IEnumerable<Interval<T>> Keys
+        public IEnumerable<Interval<T>> Intervals
         {
             get
             {
                 if (this.Root == null)
+                {
                     yield break;
+                }
 
                 var p = IntervalNode.FindMin(this.Root);
                 while (p != null)
                 {
-                    yield return p.Interval;
-
-                    foreach (var rangeNode in p.GetRange())
+                    foreach (var rangeNode in p.GetRangeReverse())
                     {
                         yield return rangeNode.Key;
                     }
 
+                    yield return p.Interval;
                     p = p.Successor();
                 }
             }
@@ -227,30 +258,71 @@ namespace IntervalTree
 
         /// <summary>
         /// Gets the collection of values (ascending order)
+        /// Those intervals starting at the same time/value are sorted further based on their End value (i.e. returned in ascending order of their End values)
         /// </summary>
         public IEnumerable<TypeValue> Values
         {
             get
             {
                 if (this.Root == null)
+                {
                     yield break;
+                }
 
                 var p = IntervalNode.FindMin(this.Root);
                 while (p != null)
                 {
-                    yield return p.Value;
-
-                    foreach (var rangeNode in p.GetRange())
+                    foreach (var rangeNode in p.GetRangeReverse())
                     {
                         yield return rangeNode.Value;
                     }
 
+                    yield return p.Value;
                     p = p.Successor();
                 }
             }
         }
 
-#endif        
+        /// <summary>
+        /// Gets the interval value pairs.
+        /// Those intervals starting at the same time/value are sorted further based on their End value (i.e. returned in ascending order of their End values)
+        /// </summary>
+        public IEnumerable<KeyValuePair<Interval<T>, TypeValue>> IntervalValuePairs
+        {
+            get
+            {
+                if (this.Root == null)
+                {
+                    yield break;
+                }
+
+                var p = IntervalNode.FindMin(this.Root);
+                while (p != null)
+                {
+                    foreach (var rangeNode in p.GetRangeReverse())
+                    {
+                        yield return rangeNode;
+                    }
+
+                    yield return new KeyValuePair<Interval<T>, TypeValue>(p.Interval, p.Value);
+                    p = p.Successor();
+                }
+            }
+        }
+
+#endif
+
+        /// <summary>
+        /// Tries to the get the value associated with the interval.
+        /// </summary>
+        /// <param name="subtree">The subtree.</param>
+        /// <param name="data">The data.</param>
+        /// <param name="value">The value.</param>
+        /// <returns></returns>
+        public bool TryGetInterval(Interval<T> data, out TypeValue value)
+        {
+            return this.TryGetIntervalImpl(this.Root, data, out value);
+        }
 
         /// <summary>
         /// Clears this instance.
@@ -261,13 +333,69 @@ namespace IntervalTree
             this.Count = 0;
         }
 
+        /// <summary>
+        /// Prints this instance (to console).
+        /// </summary>
         public void Print()
         {
             this.Visit((node, level) =>
             {
                 Console.Write(new string(' ', 2 * level));
-                Console.WriteLine("{0}", "[" + node.Interval.Start.ToString() + "," + node.Interval.End.ToString() + "]." + (node.Max));
+                Console.Write(string.Format("{0}.{1}", node.Interval.ToString(), node.Max));
+
+                if (node.Range != null)
+                {                    
+                    Console.Write(" ... ");
+                    foreach (var rangeNode in node.GetRange())
+                    {
+                        Console.Write(string.Format("{0}  ", rangeNode.Key));
+                    }
+                }
+
+                Console.WriteLine();
             });
+        }        
+
+        /// <summary>
+        /// Searches for interval starting at.
+        /// </summary>
+        /// <param name="subtree">The subtree.</param>
+        /// <param name="data">The data.</param>
+        /// <returns></returns>
+        private bool TryGetIntervalImpl(IntervalNode subtree, Interval<T> data, out TypeValue value)
+        {
+            if (subtree != null)
+            {
+                int compareResult = data.Start.CompareTo(subtree.Interval.Start);
+
+                if (compareResult < 0)
+                {
+                    return this.TryGetIntervalImpl(subtree.Left, data, out value);
+                }
+                else if (compareResult > 0)
+                {
+                    return this.TryGetIntervalImpl(subtree.Right, data, out value);
+                }
+                else
+                {
+                    if (data.End.CompareTo(subtree.Interval.End) == 0)
+                    {
+                        value = subtree.Value;
+                        return true;
+                    }
+                    else if (subtree.Range != null)
+                    {
+                        int kthIndex = subtree.Range.BinarySearch(new KeyValuePair<T, TypeValue>(data.End, default(TypeValue)), this.keyvalueComparer);
+                        if (kthIndex >= 0)
+                        {
+                            value = subtree.Range[kthIndex].Value;
+                            return true;
+                        }
+                    }
+                }
+            }
+            value = default(TypeValue);
+            return false;
         }
 
         /// <summary>
@@ -276,35 +404,52 @@ namespace IntervalTree
         /// <param name="visitor">The visitor.</param>
         private void Visit(VisitNodeHandler<IntervalNode> visitor)
         {
-            if (Root != null)
+            if (this.Root != null)
             {
-                Root.Visit(visitor, 0);
+                this.Root.Visit(visitor, 0);
             }
-        }
+        }        
 
         #endregion
 
         #region Nested Classes
 
         /// <summary>
-        /// node class
+        /// IntervalNode class. 
         /// </summary>
         /// <typeparam name="TElem">The type of the elem.</typeparam>
         private class IntervalNode
         {
-            #region Properties
-
-            private int Balance;
-            private IntervalNode Left;
-            private IntervalNode Right;
-            public Interval<T> Interval;
-            public TypeValue Value;
-            private List<KeyValuePair<T, TypeValue>> Range;
-            public T Max;
+            #region Fields
 
 #if TREE_WITH_PARENT_POINTERS
             private IntervalNode Parent;
 #endif
+            #endregion
+
+            #region Properties
+
+            public int Balance { get; private set; }
+            public IntervalNode Left  { get; private set; }
+            public IntervalNode Right { get; private set; }
+            public Interval<T> Interval { get; private set; }
+            public TypeValue Value { get; private set; }
+            public List<KeyValuePair<T, TypeValue>> Range { get; private set; }
+            public T Max { get;  private set; }
+
+            #endregion
+
+            #region C'tor
+
+            public IntervalNode(Interval<T> interval, TypeValue value)
+            {
+                this.Left = null;
+                this.Right = null;
+                this.Balance = 0;
+                this.Interval = interval;
+                this.Value = value;
+                this.Max = interval.End;
+            }
 
             #endregion
 
@@ -320,7 +465,7 @@ namespace IntervalTree
             {
                 if (elem == null)
                 {
-                    elem = new IntervalNode { Left = null, Right = null, Balance = 0, Interval = interval, Value = value, Max = interval.End };
+                    elem = new IntervalNode(interval, value);
                     wasAdded = true;
                     wasSuccessful = true;
                 }
@@ -360,7 +505,6 @@ namespace IntervalTree
                                     elem.Left.Balance = elemLeftRightBalance == 1 ? -1 : 0;
                                     elem.Right.Balance = elemLeftRightBalance == -1 ? 1 : 0;
                                 }
-
                                 else if (elem.Left.Balance == -1)
                                 {
                                     elem = RotateRight(elem);
@@ -416,31 +560,11 @@ namespace IntervalTree
                     }
                     else
                     {
-                        // we allow multiple values per key
-                        if (elem.Range == null)
-                        {
-                            elem.Range = new List<KeyValuePair<T, TypeValue>>();
-                        }
+                        //// if there are more than one interval starting at the same time/value, the intervalnode.Interval stores the start time and the maximum end time of all intervals starting at the same value.
+                        //// all end values (except the maximum end time/value which is stored in the interval node itself) are stored in the Range list in decreasing order.
+                        //// note: this is ok for problems where intervals starting at the same time /value is not a frequent occurrence, however you can use other data structure for better performance depending on your problem needs
 
-                        //always store the max Y value in the node itself .. store the Range list in decreasing order
-                        if (interval.End.CompareTo(elem.Interval.End) > 0)
-                        {
-                            elem.Range.Insert(0, new KeyValuePair<T, TypeValue>(elem.Interval.End, elem.Value));
-                            elem.Interval = interval;
-                            elem.Value = value;
-                        }
-                        else
-                        {
-                            for (int i = 0; i < elem.Range.Count; i++)
-                            {
-                                if (interval.End.CompareTo(elem.Range[i].Key) >= 0)
-                                {
-                                    elem.Range.Insert(i, new KeyValuePair<T, TypeValue>(interval.End, value));
-
-                                    break;
-                                }
-                            }
-                        }
+                        elem.AddIntervalValuePair(interval, value);
 
                         wasSuccessful = true;
                     }
@@ -448,34 +572,6 @@ namespace IntervalTree
                 }
 
                 return elem;
-            }
-
-            /// <summary>
-            /// Searches the specified subtree.
-            /// </summary>
-            /// <param name="subtree">The subtree.</param>
-            /// <param name="data">The data.</param>
-            /// <returns></returns>
-            public static IntervalNode Search(IntervalNode subtree, Interval<T> data)
-            {
-                if (subtree != null)
-                {
-                    int compareResult = data.Start.CompareTo(subtree.Interval.Start);
-
-                    if (compareResult < 0)
-                    {
-                        return Search(subtree.Left, data);
-                    }
-                    else if (compareResult > 0)
-                    {
-                        return Search(subtree.Right, data);
-                    }
-                    else
-                    {
-                        return subtree;
-                    }
-                }
-                else return null;
             }
 
             /// <summary>
@@ -512,88 +608,7 @@ namespace IntervalTree
                         node.Max = maxRange.CompareTo(rightMax) >= 0 ? maxRange : rightMax;
                     }
                 }
-            }
-
-            /// <summary>
-            /// Rotates lefts this instance.
-            /// Assumes that this.Right != null
-            /// </summary>
-            /// <returns></returns>
-            private static IntervalNode RotateLeft(IntervalNode node)
-            {
-                var right = node.Right;
-                Debug.Assert(node.Right != null);
-
-                var rightLeft = right.Left;
-
-                node.Right = rightLeft;
-                ComputeMax(node);
-
-#if TREE_WITH_PARENT_POINTERS
-                var parent = node.Parent;
-                if (rightLeft != null)
-                {
-                    rightLeft.Parent = node;
-                }
-#endif
-                right.Left = node;
-                ComputeMax(right);
-
-#if TREE_WITH_PARENT_POINTERS
-                node.Parent = right;
-                if (parent != null)
-                {
-                    if (parent.Left == node)
-                        parent.Left = right;
-                    else
-                        parent.Right = right;
-
-                }
-                right.Parent = parent;
-#endif
-
-                return right;
-
-            }
-
-            /// <summary>
-            /// Rotates right this instance.
-            /// Assumes that (this.Left != null)
-            /// </summary>
-            /// <returns></returns>
-            private static IntervalNode RotateRight(IntervalNode node)
-            {
-                var left = node.Left;
-                Debug.Assert(node.Left != null);
-
-                var leftRight = left.Right;
-                node.Left = leftRight;
-                ComputeMax(node);
-
-#if TREE_WITH_PARENT_POINTERS
-                var parent = node.Parent;
-                if (leftRight != null)
-                {
-                    leftRight.Parent = node;
-                }
-#endif
-                left.Right = node;
-                ComputeMax(left);
-
-#if TREE_WITH_PARENT_POINTERS
-                node.Parent = left;
-                if (parent != null)
-                {
-                    if (parent.Left == node)
-                        parent.Left = left;
-                    else
-                        parent.Right = left;
-
-                }
-                left.Parent = parent;
-#endif
-                return left;
-            }
+            }            
 
             /// <summary>
             /// Finds the min.
@@ -623,14 +638,41 @@ namespace IntervalTree
                 return node;
             }
 
+            /// <summary>
+            /// Gets the range of intervals stored in this.Range (i.e. starting at the same value 'this.Interval.Start' as the interval stored in the node itself)
+            /// The range intervals are sorted in the descending order of their End interval values
+            /// </summary>
+            /// <returns></returns>
             public IEnumerable<KeyValuePair<Interval<T>, TypeValue>> GetRange()
             {
                 if (this.Range != null)
                 {
                     foreach (var value in this.Range)
                     {
-                        var kInterval = new Interval<T>(this.Interval.Start, value.Key);
-                        yield return new KeyValuePair<Interval<T>, TypeValue>(kInterval, value.Value);
+                        var kth = new Interval<T>(this.Interval.Start, value.Key);
+                        yield return new KeyValuePair<Interval<T>, TypeValue>(kth, value.Value);
+                    }
+                }
+                else
+                {
+                    yield break;
+                }
+            }
+
+            /// <summary>
+            /// Gets the range of intervals stored in this.Range (i.e. starting at the same value 'this.Interval.Start' as the interval stored in the node itself).
+            /// The range intervals are sorted in the ascending order of their End interval values
+            /// </summary>
+            /// <returns></returns>
+            public IEnumerable<KeyValuePair<Interval<T>, TypeValue>> GetRangeReverse()
+            {
+                if (this.Range != null && this.Range.Count > 0)
+                {
+                    int rangeCount = this.Range.Count;
+                    for (int k = rangeCount - 1; k >= 0; k--)
+                    {
+                        var kth = new Interval<T>(this.Interval.Start, this.Range[k].Key);
+                        yield return new KeyValuePair<Interval<T>, TypeValue>(kth, this.Range[k].Value);
                     }
                 }
                 else
@@ -653,7 +695,9 @@ namespace IntervalTree
                 {
                     var p = this;
                     while (p.Parent != null && p.Parent.Right == p)
+                    {
                         p = p.Parent;
+                    }
                     return p.Parent;
                 }
             }
@@ -665,12 +709,16 @@ namespace IntervalTree
             public IntervalNode Predecesor()
             {
                 if (this.Left != null)
+                {
                     return FindMax(this.Left);
+                }
                 else
                 {
                     var p = this;
                     while (p.Parent != null && p.Parent.Left == p)
+                    {
                         p = p.Parent;
+                    }
                     return p.Parent;
                 }
             }
@@ -695,6 +743,12 @@ namespace IntervalTree
                         if (node.Left != newChild)
                         {
                             node.Left = newChild;
+#if TREE_WITH_PARENT_POINTERS
+                            if (newChild != null)
+                            {
+                                newChild.Parent = node;
+                            }
+#endif
                         }
 
                         if (wasDeleted)
@@ -705,62 +759,7 @@ namespace IntervalTree
                 }
                 else if (cmp == 0)
                 {
-                    int position = -1;
-
-                    // find the exact interval to delete based on the Y value.. consider changing this code
-                    if (arg.End.CompareTo(node.Interval.End) == 0)
-                    {
-                        position = 0;
-                    }
-                    else
-                    {
-                        if (node.Range != null && node.Range.Count > 0)
-                        {
-                            for (int k = 0; k < node.Range.Count; k++)
-                            {
-                                if (arg.End.CompareTo(node.Range[k].Key) == 0)
-                                {
-                                    position = k + 1;
-                                }
-                            }
-                        }
-                    }
-
-                    // couldn't find the interval in the tree, throw an exception
-                    if (position == -1)
-                    {
-                        throw new ArgumentOutOfRangeException("arg", "cannot delete the specified interval. invalid argument.");
-                    }
-
-                    if (position > 0)
-                    {
-                        // we're counting the value stored in the node.Value as position 0, all values stored in Range represent position + 1, position + 2, ...etc
-                        if (node.Range != null && position - 1 < node.Range.Count)
-                        {
-                            node.Range.RemoveAt(position - 1);
-
-                            if (node.Range.Count == 0)
-                            {
-                                node.Range = null;
-                            }
-
-                            wasSuccessful = true;
-                        }
-                    }
-                    else if (position == 0 && node.Range != null && node.Range.Count > 0)
-                    {
-                        node.Interval = new Interval<T>(node.Interval.Start, node.Range[0].Key);
-                        node.Value = node.Range[0].Value;
-
-                        node.Range.RemoveAt(0);
-                        if (node.Range.Count == 0)
-                        {
-                            node.Range = null;
-                        }
-
-                        wasSuccessful = true;
-                    }
-                    else
+                    if (arg.End.CompareTo(node.Interval.End) == 0 && node.Range == null)
                     {
                         if (node.Left != null && node.Right != null)
                         {
@@ -775,6 +774,12 @@ namespace IntervalTree
                             if (node.Right != newChild)
                             {
                                 node.Right = newChild;
+#if TREE_WITH_PARENT_POINTERS
+                                if (newChild != null)
+                                {
+                                    newChild.Parent = node;
+                                }
+#endif
                             }
 
                             if (wasDeleted)
@@ -795,6 +800,10 @@ namespace IntervalTree
                             return node.Left;
                         }
                     }
+                    else
+                    {
+                        wasSuccessful = node.DeleteIntervalFromNodeWithRange(arg);
+                    }
                 }
                 else
                 {
@@ -804,6 +813,12 @@ namespace IntervalTree
                         if (node.Right != newChild)
                         {
                             node.Right = newChild;
+#if TREE_WITH_PARENT_POINTERS
+                            if (newChild != null)
+                            {
+                                newChild.Parent = node;
+                            }
+#endif
                         }
 
                         if (wasDeleted)
@@ -812,6 +827,7 @@ namespace IntervalTree
                         }
                     }
                 }
+
                 ComputeMax(node);
 
                 if (wasDeleted)
@@ -878,26 +894,12 @@ namespace IntervalTree
                         }
                     }
                 }
+
                 return node;
             }
 
-            private void Swap(IntervalNode node)
-            {
-                var dataInterval = this.Interval;
-                var dataValue = this.Value;
-                var dataRange = this.Range;
-
-                this.Interval = node.Interval;
-                this.Value = node.Value;
-                this.Range = node.Range;
-
-                node.Interval = dataInterval;
-                node.Value = dataValue;
-                node.Range = dataRange;
-            }
-
             /// <summary>
-            /// Returns all intervals beginning at the specified start value
+            /// Returns all intervals beginning at the specified start value. The intervals are sorted based on their End value (i.e. returned in ascending order of their End values)
             /// </summary>
             /// <param name="subtree">The subtree.</param>
             /// <param name="data">The data.</param>
@@ -918,17 +920,14 @@ namespace IntervalTree
                     else
                     {
                         var result = new List<KeyValuePair<Interval<T>, TypeValue>>();
-                        result.Add(new KeyValuePair<Interval<T>, TypeValue>(subtree.Interval, subtree.Value));
-
                         if (subtree.Range != null)
                         {
-                            foreach (var value in subtree.Range)
+                            foreach (var kvp in subtree.GetRangeReverse())
                             {
-                                var kInterval = new Interval<T>(start, value.Key);
-                                result.Add(new KeyValuePair<Interval<T>, TypeValue>(kInterval, value.Value));
+                                result.Add(kvp);
                             }
                         }
-
+                        result.Add(new KeyValuePair<Interval<T>, TypeValue>(subtree.Interval, subtree.Value));
                         return result;
                     }
                 }
@@ -940,6 +939,7 @@ namespace IntervalTree
 
             /// <summary>
             /// Searches for all intervals in this subtree that are overlapping the argument interval.
+            /// If multiple intervals starting at the same time/value are found to overlap, they are returned in decreasing order of their End values.
             /// </summary>
             /// <param name="toFind">To find.</param>
             /// <param name="list">The list.</param>
@@ -947,7 +947,7 @@ namespace IntervalTree
             {
                 if (toFind.End.CompareTo(this.Interval.Start) <= 0)
                 {
-                    ////toFind ends before subtree.Interval begins, prune the right subtree
+                    ////toFind ends before subtree.Data begins, prune the right subtree
                     if (this.Left != null)
                     {
                         this.Left.GetIntervalsOverlappingWith(toFind, ref list);
@@ -977,20 +977,25 @@ namespace IntervalTree
                         }
 
                         list.Add(new KeyValuePair<Interval<T>, TypeValue>(this.Interval, this.Value));
-                    }
 
-                    if (this.Range != null && this.Range.Count > 0)
-                    {
-                        for (int k = 0; k < this.Range.Count; k++)
+                        ////the max value is stored in the node, if the node doesn't overlap then neither are the nodes in its range 
+                        if (this.Range != null && this.Range.Count > 0)
                         {
-                            var kInterval = new Interval<T>(this.Interval.Start, this.Range[k].Key);
-                            if (kInterval.OverlapsWith(toFind))
+                            int rangeCount = this.Range.Count;
+                            foreach (var kvp in this.GetRange())
                             {
-                                if (list == null)
+                                if (kvp.Key.OverlapsWith(toFind))
                                 {
-                                    list = new List<KeyValuePair<Interval<T>, TypeValue>>();
+                                    if (list == null)
+                                    {
+                                        list = new List<KeyValuePair<Interval<T>, TypeValue>>();
+                                    }
+                                    list.Add(kvp);
                                 }
-                                list.Add(new KeyValuePair<Interval<T>, TypeValue>(kInterval, this.Range[k].Value));
+                                else
+                                {
+                                    break;
+                                }
                             }
                         }
                     }
@@ -1004,7 +1009,8 @@ namespace IntervalTree
             }
 
             /// <summary>
-            /// Gets all intervals in this subtree that are overlapping the argument interval.
+            /// Gets all intervals in this subtree that are overlapping the argument interval. 
+            /// If multiple intervals starting at the same time/value are found to overlap, they are returned in decreasing order of their End values.
             /// </summary>
             /// <param name="toFind">To find.</param>
             /// <returns></returns>
@@ -1012,7 +1018,7 @@ namespace IntervalTree
             {
                 if (toFind.End.CompareTo(this.Interval.Start) <= 0)
                 {
-                    //toFind ends before subtree.Interval begins, prune the right subtree
+                    ////toFind ends before subtree.Data begins, prune the right subtree
                     if (this.Left != null)
                     {
                         foreach (var value in this.Left.GetIntervalsOverlappingWith(toFind))
@@ -1023,7 +1029,7 @@ namespace IntervalTree
                 }
                 else if (toFind.Start.CompareTo(this.Max) >= 0)
                 {
-                    //toFind begins after the subtree.Max ends, prune the left subtree
+                    ////toFind begins after the subtree.Max ends, prune the left subtree
                     if (this.Right != null)
                     {
                         foreach (var value in this.Right.GetIntervalsOverlappingWith(toFind))
@@ -1045,21 +1051,22 @@ namespace IntervalTree
                     if (this.Interval.OverlapsWith(toFind))
                     {
                         yield return new KeyValuePair<Interval<T>, TypeValue>(this.Interval, this.Value);
-                    }
 
-                    if (this.Range != null && this.Range.Count > 0)
-                    {
-                        foreach (var value in this.Range)
+                        if (this.Range != null && this.Range.Count > 0)
                         {
-                            var kInterval = new Interval<T>(this.Interval.Start, value.Key);
-
-                            if (kInterval.OverlapsWith(toFind))
+                            foreach (var kvp in this.GetRange())
                             {
-                                yield return new KeyValuePair<Interval<T>, TypeValue>(kInterval, value.Value);
+                                if (kvp.Key.OverlapsWith(toFind))
+                                {
+                                    yield return kvp;
+                                }
+                                else
+                                {
+                                    break;
+                                }
                             }
                         }
                     }
-
 
                     if (this.Right != null)
                     {
@@ -1086,9 +1093,285 @@ namespace IntervalTree
                 }
             }
 
+            /// <summary>
+            /// Rotates lefts this instance.
+            /// Assumes that this.Right != null
+            /// </summary>
+            /// <returns></returns>
+            private static IntervalNode RotateLeft(IntervalNode node)
+            {
+                var right = node.Right;
+                Debug.Assert(node.Right != null);
+
+                var rightLeft = right.Left;
+
+                node.Right = rightLeft;
+                ComputeMax(node);
+
+#if TREE_WITH_PARENT_POINTERS
+                var parent = node.Parent;
+                if (rightLeft != null)
+                {
+                    rightLeft.Parent = node;
+                }
+#endif
+                right.Left = node;
+                ComputeMax(right);
+
+#if TREE_WITH_PARENT_POINTERS
+                node.Parent = right;
+                if (parent != null)
+                {
+                    if (parent.Left == node)
+                    {
+                        parent.Left = right;
+                    }
+                    else
+                    {
+                        parent.Right = right;
+                    }
+                }
+                right.Parent = parent;
+#endif
+                return right;
+            }
+
+            /// <summary>
+            /// Rotates right this instance.
+            /// Assumes that (this.Left != null)
+            /// </summary>
+            /// <returns></returns>
+            private static IntervalNode RotateRight(IntervalNode node)
+            {
+                var left = node.Left;
+                Debug.Assert(node.Left != null);
+
+                var leftRight = left.Right;
+                node.Left = leftRight;
+                ComputeMax(node);
+
+#if TREE_WITH_PARENT_POINTERS
+                var parent = node.Parent;
+                if (leftRight != null)
+                {
+                    leftRight.Parent = node;
+                }
+#endif
+                left.Right = node;
+                ComputeMax(left);
+
+#if TREE_WITH_PARENT_POINTERS
+                node.Parent = left;
+                if (parent != null)
+                {
+                    if (parent.Left == node)
+                    {
+                        parent.Left = left;
+                    }
+                    else
+                    {
+                        parent.Right = left;
+                    }
+                }
+                left.Parent = parent;
+#endif
+                return left;
+            }
+
+            /// <summary>
+            /// Deletes the specified interval from this node. 
+            /// If the interval tree is used with unique intervals, this method removes the interval specified as an argument.
+            /// If multiple identical intervals (starting at the same time and also ending at the same time) are allowed, this function will delete one of them. 
+            /// In this case, it is easy enough to either specify the (interval, value) pair to be deleted or enforce uniqueness by changing the Add procedure.
+            /// </summary>
+            /// <param name="interval">The interval to be deleted.</param>
+            /// <returns></returns>
+            private bool DeleteIntervalFromNodeWithRange(Interval<T> interval)
+            {
+                if (this.Range != null && this.Range.Count > 0)
+                {
+                    int rangeCount = this.Range.Count;
+                    int intervalPosition = -1;
+
+                    // find the exact interval to delete based on its End value.
+                    if (interval.End.CompareTo(this.Interval.End) == 0)
+                    {
+                        intervalPosition = 0;
+                    }
+                    else if (rangeCount > 12)
+                    {
+                        var keyvalueComparer = new KeyValueComparer<T, TypeValue>(ComparerUtil.GetComparer());
+                        int k = this.Range.BinarySearch(new KeyValuePair<T, TypeValue>(interval.End, default(TypeValue)), keyvalueComparer);
+                        if (k >= 0)
+                        {
+                            intervalPosition = k + 1;
+                        }
+                    }
+                    else
+                    {
+                        for (int k = 0; k < rangeCount; k++)
+                        {
+                            if (interval.End.CompareTo(this.Range[k].Key) == 0)
+                            {
+                                intervalPosition = k + 1;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (intervalPosition < 0)
+                    {
+                        return false;
+                    }
+                    else if (intervalPosition == 0)
+                    {
+                        this.Interval = new Interval<T>(this.Interval.Start, this.Range[0].Key);
+                        this.Value = this.Range[0].Value;
+                        this.Range.RemoveAt(0);
+                    }
+                    else if (intervalPosition > 0)
+                    {
+                        this.Range.RemoveAt(intervalPosition - 1);
+                    }
+
+                    if (this.Range.Count == 0)
+                    {
+                        this.Range = null;
+                    }
+
+                    return true;
+                }
+                else
+                {
+                    ////if interval end was not found in the range (or the node itself) or if the node doesnt have a range, return false
+                    return false;
+                }
+            }            
+
+            private void Swap(IntervalNode node)
+            {
+                var dataInterval = this.Interval;
+                var dataValue = this.Value;
+                var dataRange = this.Range;
+
+                this.Interval = node.Interval;
+                this.Value = node.Value;
+                this.Range = node.Range;
+
+                node.Interval = dataInterval;
+                node.Value = dataValue;
+                node.Range = dataRange;
+            }
+
+            private void AddIntervalValuePair(Interval<T> interval, TypeValue value)
+            {
+                if (this.Range == null)
+                {
+                    this.Range = new List<KeyValuePair<T, TypeValue>>();
+                }
+
+                ////always store the max End value in the node.Data itself .. store the Range list in decreasing order
+                if (interval.End.CompareTo(this.Interval.End) > 0)
+                {
+                    this.Range.Insert(0, new KeyValuePair<T, TypeValue>(this.Interval.End, this.Value));
+                    this.Interval = interval;
+                    this.Value = value;
+                }
+                else
+                {
+                    bool wasAdded = false;
+                    for (int i = 0; i < this.Range.Count; i++)
+                    {
+                        if (interval.End.CompareTo(this.Range[i].Key) >= 0)
+                        {
+                            this.Range.Insert(i, new KeyValuePair<T, TypeValue>(interval.End, value));
+                            wasAdded = true;
+                            break;
+                        }
+                    }
+                    if (!wasAdded)
+                    {
+                        this.Range.Add(new KeyValuePair<T, TypeValue>(interval.End, value));
+                    }
+                }
+            }
+
             #endregion
+        }
+
+        private class KeyValueComparer<TKey, TValue> : IComparer<KeyValuePair<TKey, TValue>>
+        {
+            private IComparer<TKey> keyComparer;
+
+            /// <summary>
+            /// Initializes a new instance of the <see cref="IntervalTree&lt;T, TypeValue&gt;.KeyValueComparer&lt;TKey, TValue&gt;"/> class.
+            /// </summary>
+            /// <param name="keyComparer">The key comparer.</param>
+            public KeyValueComparer(IComparer<TKey> keyComparer)
+            {
+                this.keyComparer = keyComparer;
+            }
+
+            /// <summary>
+            /// Compares two objects and returns a value indicating whether one is less than, equal to, or greater than the other.
+            /// </summary>
+            /// <param name="x">The first object to compare.</param>
+            /// <param name="y">The second object to compare.</param>
+            /// <returns>
+            /// Value Condition Less than zero is less than y.Zerox equals y.Greater than zero is greater than y.
+            /// </returns>
+            public int Compare(KeyValuePair<TKey, TValue> x, KeyValuePair<TKey, TValue> y)
+            {
+                return (-1) * this.keyComparer.Compare(x.Key, y.Key);
+            }
+
+            /// <summary>
+            /// Determines whether the specified <see cref="System.Object"/> is equal to this instance.
+            /// </summary>
+            /// <param name="obj">The <see cref="System.Object"/> to compare with this instance.</param>
+            /// <returns>
+            ///   <c>true</c> if the specified <see cref="System.Object"/> is equal to this instance; otherwise, <c>false</c>.
+            /// </returns>
+            public override bool Equals(object obj)
+            {
+                if (obj is KeyValueComparer<TKey, TValue>)
+                {
+                    return object.Equals(this.keyComparer, ((KeyValueComparer<TKey, TValue>)obj).keyComparer);
+                }
+                else
+                {
+                    return false;
+                }
+            }
+
+            /// <summary>
+            /// Returns a hash code for this instance.
+            /// </summary>
+            /// <returns>
+            /// A hash code for this instance, suitable for use in hashing algorithms and data structures like a hash table. 
+            /// </returns>
+            public override int GetHashCode()
+            {
+                return this.keyComparer.GetHashCode();
+            }
+        }
+
+        public static class ComparerUtil
+        {
+            public static IComparer<T> GetComparer()
+            {
+                if (typeof(IComparable<T>).IsAssignableFrom(typeof(T)) || typeof(System.IComparable).IsAssignableFrom(typeof(T)))
+                {
+                    return Comparer<T>.Default;
+                }
+                else
+                {
+                    throw new InvalidOperationException(string.Format("The type {0} cannot be compared. It must implement IComparable<T> or IComparable", typeof(T).FullName));
+                }
+            }
         }
 
         #endregion
     }
+    
 }
